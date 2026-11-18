@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>生产报工 - 简易 MES</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="nav"></div>
+  <div class="container">
+    <div class="card">
+      <h2>提交报工</h2>
+      <div class="form-grid">
+        <div class="field"><label>工单号 *</label><input id="f_orderNo" placeholder="已开工的工单号"></div>
+        <div class="field"><label>报工类型</label>
+          <select id="f_reportType"><option value="MANUAL">人工</option><option value="EQUIPMENT">设备</option></select>
+        </div>
+        <div class="field"><label>报工工号</label><input id="f_employeeId"></div>
+        <div class="field"><label>设备ID（设备报工）</label><input id="f_equipmentId"></div>
+        <div class="field"><label>合格数量 *</label><input id="f_qualifiedQty" type="number" value="0"></div>
+        <div class="field"><label>工时</label><input id="f_workHours" type="number" value="0"></div>
+        <div class="field"><label>班次</label>
+          <select id="f_shift"><option value="">-</option><option value="DAY">白班</option><option value="NIGHT">夜班</option></select>
+        </div>
+        <div class="field"><button class="btn-primary" onclick="submitReport()">报工</button></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="toolbar">
+        <div class="field"><label>工单号筛选</label><input id="q_orderNo" placeholder="按工单号查询"></div>
+        <button class="btn-primary" onclick="load()">查询</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div id="list"></div>
+      <div id="pager"></div>
+    </div>
+  </div>
+
+  <script src="js/common.js"></script>
+  <script>
+    if (!MES.requireLogin()) throw new Error('skip');
+    MES.renderNav('production-report.html');
+    const state = { current: 1, size: 10 };
+
+    async function load() {
+      try {
+        const data = await MES.get('/production-report/page', {
+          current: state.current, size: state.size,
+          orderNo: document.getElementById('q_orderNo').value.trim()
+        });
+        MES.renderTable('list', [
+          { label: '工单号', key: 'orderNo' },
+          { label: '类型', render: r => r.reportType === 'EQUIPMENT' ? '设备' : '人工' },
+          { label: '工号', key: 'employeeId' },
+          { label: '设备ID', key: 'equipmentId' },
+          { label: '合格数', key: 'qualifiedQty' },
+          { label: '工时', key: 'workHours' },
+          { label: '班次', render: r => r.shift === 'DAY' ? '白班' : (r.shift === 'NIGHT' ? '夜班' : '') },
+          { label: '报工时间', render: r => MES.fmtDate(r.reportTime) }
+        ], data.records);
+        MES.renderPager('pager', data, p => { state.current = p; load(); });
+      } catch (e) { MES.toast(e.message, 'error'); }
+    }
+
+    async function submitReport() {
+      const body = {
+        orderNo: document.getElementById('f_orderNo').value.trim(),
+        reportType: document.getElementById('f_reportType').value,
+        employeeId: document.getElementById('f_employeeId').value.trim(),
+        equipmentId: document.getElementById('f_equipmentId').value.trim(),
+        qualifiedQty: Number(document.getElementById('f_qualifiedQty').value || 0),
+        workHours: Number(document.getElementById('f_workHours').value || 0),
+        shift: document.getElementById('f_shift').value
+      };
+      if (!body.orderNo) { MES.toast('工单号必填', 'error'); return; }
+      if (!(body.qualifiedQty > 0)) { MES.toast('合格数量必须大于0', 'error'); return; }
+      try {
+        await MES.post('/production-report', body);
+        MES.toast('报工成功', 'ok');
+        document.getElementById('f_qualifiedQty').value = '0';
+        document.getElementById('f_workHours').value = '0';
+        load();
+      } catch (e) { MES.toast(e.message, 'error'); }
+    }
+
+    load();
+  </script>
+</body>
+</html>

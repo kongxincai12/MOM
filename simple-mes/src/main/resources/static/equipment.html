@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>设备管理 - 简易 MES</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="nav"></div>
+  <div class="container">
+    <div class="card">
+      <h2>新增设备</h2>
+      <div class="form-grid">
+        <div class="field"><label>设备编号 *</label><input id="f_eqpCode" placeholder="如 EQP-001"></div>
+        <div class="field"><label>设备名称</label><input id="f_eqpName"></div>
+        <div class="field"><label>设备类型</label><input id="f_eqpTypeId" placeholder="类型ID"></div>
+        <div class="field"><label>位置/线体</label><input id="f_location"></div>
+        <div class="field"><label>状态</label>
+          <select id="f_status"><option value="IDLE">空闲 IDLE</option><option value="RUNNING">运行 RUNNING</option><option value="MAINTENANCE">维修 MAINTENANCE</option></select>
+        </div>
+        <div class="field"><button class="btn-primary" onclick="createEq()">创建</button></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="toolbar">
+        <div class="field"><label>状态</label>
+          <select id="q_status"><option value="">全部</option><option>RUNNING</option><option>IDLE</option><option>MAINTENANCE</option></select>
+        </div>
+        <div class="field"><label>关键字（编号/名称）</label><input id="q_keyword"></div>
+        <button class="btn-primary" onclick="load()">查询</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div id="list"></div>
+      <div id="pager"></div>
+    </div>
+  </div>
+
+  <script src="js/common.js"></script>
+  <script>
+    if (!MES.requireLogin()) throw new Error('skip');
+    MES.renderNav('equipment.html');
+    const state = { current: 1, size: 10 };
+
+    async function load() {
+      try {
+        const data = await MES.get('/equipment/page', {
+          current: state.current, size: state.size,
+          status: document.getElementById('q_status').value,
+          keyword: document.getElementById('q_keyword').value.trim()
+        });
+        MES.renderTable('list', [
+          { label: '设备编号', key: 'eqpCode' },
+          { label: '设备名称', key: 'eqpName' },
+          { label: '类型', key: 'eqpTypeId' },
+          { label: '位置', key: 'location' },
+          { label: '状态', render: r => statusEditor(r) },
+          { label: '更新时间', render: r => MES.fmtDate(r.updateTime) },
+          { label: '操作', render: r => '<button class="btn-mini btn-danger" data-act="delete" data-id="' + MES.esc(r.id) + '">删除</button>' }
+        ], data.records);
+        MES.renderPager('pager', data, p => { state.current = p; load(); });
+      } catch (e) { MES.toast(e.message, 'error'); }
+    }
+
+    function statusEditor(r) {
+      const opts = ['RUNNING', 'IDLE', 'MAINTENANCE'].map(s =>
+        '<option value="' + s + '" ' + (s === r.status ? 'selected' : '') + '>' + s + '</option>').join('');
+      return '<select class="status-sel" data-id="' + MES.esc(r.id) + '" style="padding:3px 6px;border:1px solid #d3dae2;border-radius:5px">' + opts + '</select>';
+    }
+
+    document.getElementById('list').addEventListener('click', async e => {
+      const b = e.target.closest('button[data-act="delete"]'); if (!b) return;
+      if (!confirm('确认删除该设备？')) return;
+      try { await MES.del('/equipment/' + b.dataset.id); MES.toast('已删除', 'ok'); load(); }
+      catch (err) { MES.toast(err.message, 'error'); }
+    });
+    document.getElementById('list').addEventListener('change', async e => {
+      const sel = e.target.closest('select.status-sel'); if (!sel) return;
+      try { await MES.post('/equipment/' + sel.dataset.id + '/status', null, { status: sel.value }); MES.toast('状态已更新', 'ok'); load(); }
+      catch (err) { MES.toast(err.message, 'error'); }
+    });
+
+    async function createEq() {
+      const body = {
+        eqpCode: document.getElementById('f_eqpCode').value.trim(),
+        eqpName: document.getElementById('f_eqpName').value.trim(),
+        eqpTypeId: document.getElementById('f_eqpTypeId').value.trim(),
+        location: document.getElementById('f_location').value.trim(),
+        status: document.getElementById('f_status').value
+      };
+      if (!body.eqpCode) { MES.toast('设备编号必填', 'error'); return; }
+      try {
+        await MES.post('/equipment', body); MES.toast('创建成功', 'ok');
+        ['f_eqpCode', 'f_eqpName', 'f_eqpTypeId', 'f_location'].forEach(i => document.getElementById(i).value = '');
+        state.current = 1; load();
+      } catch (e) { MES.toast(e.message, 'error'); }
+    }
+
+    load();
+  </script>
+</body>
+</html>

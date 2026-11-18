@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>首页 - 简易 MES</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="nav"></div>
+  <div class="container">
+    <div class="card">
+      <h2>数据概览</h2>
+      <div class="stat-grid" id="stats">
+        <div class="stat-card"><div class="num" id="stWo">-</div><div class="label">生产工单</div></div>
+        <div class="stat-card"><div class="num" id="stWoStarted">-</div><div class="label">进行中工单</div></div>
+        <div class="stat-card"><div class="num" id="stEq">-</div><div class="label">设备总数</div></div>
+        <div class="stat-card"><div class="num" id="stMat">-</div><div class="label">物料总数</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>快捷入口</h2>
+      <div class="toolbar">
+        <a href="work-order.html"><button class="btn-primary">生产工单</button></a>
+        <a href="production-report.html"><button class="btn-primary">生产报工</button></a>
+        <a href="material.html"><button class="btn-primary">物料库存</button></a>
+        <a href="equipment.html"><button class="btn-primary">设备管理</button></a>
+        <a href="quality.html"><button class="btn-primary">质量管理</button></a>
+        <a href="swagger-ui.html" target="_blank"><button class="btn-mini">Swagger 接口文档</button></a>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>最近工单</h2>
+      <div id="recentWo"></div>
+    </div>
+  </div>
+
+  <script src="js/common.js"></script>
+  <script>
+    if (!MES.requireLogin()) throw new Error('skip');
+    MES.renderNav('index.html');
+
+    async function load() {
+      try {
+        const wo = await MES.get('/work-order/page', { current: 1, size: 1 });
+        document.getElementById('stWo').textContent = wo.total;
+        const started = await MES.get('/work-order/page', { current: 1, size: 1, status: 'STARTED' });
+        document.getElementById('stWoStarted').textContent = started.total;
+        const eq = await MES.get('/equipment/page', { current: 1, size: 1 });
+        document.getElementById('stEq').textContent = eq.total;
+        const mat = await MES.get('/material/page', { current: 1, size: 1 });
+        document.getElementById('stMat').textContent = mat.total;
+
+        const recent = await MES.get('/work-order/page', { current: 1, size: 8 });
+        MES.renderTable('recentWo', [
+          { label: '工单号', key: 'orderNo' },
+          { label: '产品', key: 'productName' },
+          { label: '计划', key: 'planQty' },
+          { label: '完成', key: 'finishQty' },
+          { label: '状态', render: r => MES.statusTag(r.status) },
+          { label: '创建时间', render: r => MES.fmtDate(r.createTime) }
+        ], recent.records);
+      } catch (e) {
+        MES.toast(e.message, 'error');
+      }
+    }
+    load();
+  </script>
+</body>
+</html>

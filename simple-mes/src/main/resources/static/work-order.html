@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>生产工单 - 简易 MES</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="nav"></div>
+  <div class="container">
+    <div class="card">
+      <h2>新建工单</h2>
+      <div class="form-grid">
+        <div class="field"><label>工单号 *</label><input id="f_orderNo" placeholder="如 WO20261117001"></div>
+        <div class="field"><label>产品编码 *</label><input id="f_productCode" placeholder="物料编码"></div>
+        <div class="field"><label>产品名称</label><input id="f_productName"></div>
+        <div class="field"><label>计划数量</label><input id="f_planQty" type="number" value="0"></div>
+        <div class="field"><label>产线</label><input id="f_lineCode" placeholder="如 LINE-A"></div>
+        <div class="field"><label>备注</label><input id="f_remark"></div>
+        <div class="field"><button class="btn-primary" onclick="createOrder()">创建</button></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="toolbar">
+        <div class="field"><label>状态</label>
+          <select id="q_status">
+            <option value="">全部</option>
+            <option>CREATED</option><option>RELEASED</option><option>STARTED</option>
+            <option>FINISHED</option><option>CLOSED</option>
+          </select>
+        </div>
+        <div class="field"><label>关键字（工单号/产品）</label><input id="q_keyword" placeholder="模糊搜索"></div>
+        <button class="btn-primary" onclick="reload()">查询</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div id="list"></div>
+      <div id="pager"></div>
+    </div>
+  </div>
+
+  <script src="js/common.js"></script>
+  <script>
+    if (!MES.requireLogin()) throw new Error('skip');
+    MES.renderNav('work-order.html');
+    const state = { current: 1, size: 10 };
+
+    async function reload() { await load(); }
+
+    async function load() {
+      try {
+        const data = await MES.get('/work-order/page', {
+          current: state.current, size: state.size,
+          status: document.getElementById('q_status').value,
+          keyword: document.getElementById('q_keyword').value.trim()
+        });
+        MES.renderTable('list', [
+          { label: '工单号', key: 'orderNo' },
+          { label: '产品编码', key: 'productCode' },
+          { label: '产品名称', key: 'productName' },
+          { label: '计划', key: 'planQty' },
+          { label: '完成', key: 'finishQty' },
+          { label: '产线', key: 'lineCode' },
+          { label: '状态', render: r => MES.statusTag(r.status) },
+          { label: '创建时间', render: r => MES.fmtDate(r.createTime) },
+          { label: '操作', render: r => actions(r) }
+        ], data.records);
+        MES.renderPager('pager', data, p => { state.current = p; load(); });
+      } catch (e) { MES.toast(e.message, 'error'); }
+    }
+
+    function actions(r) {
+      let btns = '';
+      const id = MES.esc(r.id);
+      if (r.status === 'CREATED') btns += '<button class="btn-mini" data-act="release" data-id="' + id + '">下发</button>';
+      if (r.status === 'RELEASED') btns += '<button class="btn-mini" data-act="start" data-id="' + id + '">开工</button>';
+      if (r.status === 'STARTED') btns += '<button class="btn-mini" data-act="finish" data-id="' + id + '">完工</button>';
+      if (r.status === 'FINISHED') btns += '<button class="btn-mini" data-act="close" data-id="' + id + '">关闭</button>';
+      if (r.status === 'CREATED' || r.status === 'RELEASED')
+        btns += '<button class="btn-mini btn-danger" data-act="delete" data-id="' + id + '">删除</button>';
+      return btns || '-';
+    }
+
+    document.getElementById('list').addEventListener('click', async e => {
+      const btn = e.target.closest('button[data-act]');
+      if (!btn) return;
+      const { act, id } = btn.dataset;
+      if (act === 'delete' && !confirm('确认删除该工单？')) return;
+      try {
+        if (act === 'delete') await MES.del('/work-order/' + id);
+        else await MES.post('/work-order/' + id + '/' + act);
+        MES.toast('操作成功', 'ok');
+        load();
+      } catch (err) { MES.toast(err.message, 'error'); }
+    });
+
+    async function createOrder() {
+      const body = {
+        orderNo: document.getElementById('f_orderNo').value.trim(),
+        productCode: document.getElementById('f_productCode').value.trim(),
+        productName: document.getElementById('f_productName').value.trim(),
+        planQty: Number(document.getElementById('f_planQty').value || 0),
+        lineCode: document.getElementById('f_lineCode').value.trim(),
+        remark: document.getElementById('f_remark').value.trim()
+      };
+      if (!body.orderNo || !body.productCode) { MES.toast('工单号和产品编码必填', 'error'); return; }
+      try {
+        await MES.post('/work-order', body);
+        MES.toast('创建成功', 'ok');
+        ['f_orderNo', 'f_productCode', 'f_productName', 'f_lineCode', 'f_remark'].forEach(i => document.getElementById(i).value = '');
+        document.getElementById('f_planQty').value = '0';
+        state.current = 1; load();
+      } catch (e) { MES.toast(e.message, 'error'); }
+    }
+
+    load();
+  </script>
+</body>
+</html>

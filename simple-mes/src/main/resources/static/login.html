@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>登录 - 简易 MES</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="login-box">
+      <h1>简易 MES</h1>
+      <p class="sub">制造执行系统 · 登录</p>
+      <div class="field">
+        <label>用户名</label>
+        <input id="username" type="text" placeholder="请输入用户名" autocomplete="username">
+      </div>
+      <div class="field">
+        <label>密码</label>
+        <input id="password" type="password" placeholder="请输入密码" autocomplete="current-password">
+      </div>
+      <button class="btn-primary" id="loginBtn" onclick="doLogin()">登 录</button>
+      <div class="login-hint">
+        演示账号：<br>
+        管理员 admin / admin123<br>
+        作业员 worker / worker123
+      </div>
+    </div>
+  </div>
+
+  <script src="js/common.js"></script>
+  <script>
+    // 已登录直接进入
+    if (MES.getToken()) { location.href = 'index.html'; }
+
+    async function doLogin() {
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value.trim();
+      if (!username || !password) { MES.toast('请输入用户名和密码', 'error'); return; }
+      const btn = document.getElementById('loginBtn');
+      btn.disabled = true;
+      try {
+        await MES.login(username, password);
+        MES.toast('登录成功', 'ok');
+        setTimeout(() => location.href = 'index.html', 300);
+      } catch (e) {
+        MES.toast(e.message, 'error');
+        btn.disabled = false;
+      }
+    }
+
+    // 回车登录
+    document.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+  </script>
+</body>
+</html>

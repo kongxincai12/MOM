@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>质量管理 - 简易 MES</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="nav"></div>
+  <div class="container">
+    <div class="card">
+      <div class="tabs" id="tabs">
+        <button data-tab="tab-scrap" class="active">报废</button>
+        <button data-tab="tab-rework">返工</button>
+        <button data-tab="tab-report">质量报表</button>
+      </div>
+
+      <!-- 报废 -->
+      <div class="tab-panel active" id="tab-scrap">
+        <div class="form-grid">
+          <div class="field"><label>工单号 *</label><input id="sc_orderNo"></div>
+          <div class="field"><label>产品编码</label><input id="sc_productCode"></div>
+          <div class="field"><label>报废数量 *</label><input id="sc_qty" type="number" value="0"></div>
+          <div class="field"><label>缺陷代码</label><input id="sc_defect"></div>
+          <div class="field"><label>原因</label><input id="sc_reason"></div>
+          <div class="field"><label>操作人</label><input id="sc_operator"></div>
+          <div class="field"><button class="btn-primary" onclick="createScrap()">提交报废</button></div>
+        </div>
+        <div class="toolbar" style="margin-top:14px">
+          <div class="field"><label>工单号筛选</label><input id="sc_qOrderNo"></div>
+          <button class="btn-primary" onclick="loadScrap()">查询</button>
+        </div>
+        <div id="scrapList" style="margin-top:12px"></div>
+        <div id="scrapPager"></div>
+      </div>
+
+      <!-- 返工 -->
+      <div class="tab-panel" id="tab-rework">
+        <div class="form-grid">
+          <div class="field"><label>工单号 *</label><input id="rw_orderNo"></div>
+          <div class="field"><label>产品编码</label><input id="rw_productCode"></div>
+          <div class="field"><label>返工数量 *</label><input id="rw_qty" type="number" value="0"></div>
+          <div class="field"><label>原因</label><input id="rw_reason"></div>
+          <div class="field"><label>操作人</label><input id="rw_operator"></div>
+          <div class="field"><button class="btn-primary" onclick="createRework()">提交返工</button></div>
+        </div>
+        <div class="toolbar" style="margin-top:14px">
+          <div class="field"><label>工单号筛选</label><input id="rw_qOrderNo"></div>
+          <button class="btn-primary" onclick="loadRework()">查询</button>
+        </div>
+        <div id="reworkList" style="margin-top:12px"></div>
+        <div id="reworkPager"></div>
+      </div>
+
+      <!-- 报表 -->
+      <div class="tab-panel" id="tab-report">
+        <div class="toolbar">
+          <div class="field"><label>工单号（留空看全部）</label><input id="rp_orderNo"></div>
+          <button class="btn-primary" onclick="loadReport()">生成报表</button>
+        </div>
+        <div id="reportList" style="margin-top:12px"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/common.js"></script>
+  <script>
+    if (!MES.requireLogin()) throw new Error('skip');
+    MES.renderNav('quality.html');
+    const st = { scrap: { current: 1, size: 10 }, rework: { current: 1, size: 10 } };
+
+    // ---- 报废 ----
+    async function loadScrap() {
+      try {
+        const data = await MES.get('/quality/scrap/page', { current: st.scrap.current, size: st.scrap.size, orderNo: document.getElementById('sc_qOrderNo').value.trim() });
+        MES.renderTable('scrapList', [
+          { label: '工单号', key: 'orderNo' },
+          { label: '产品编码', key: 'productCode' },
+          { label: '报废数量', key: 'qty' },
+          { label: '缺陷代码', key: 'defectCode' },
+          { label: '原因', key: 'reason' },
+          { label: '操作人', key: 'operator' },
+          { label: '时间', render: r => MES.fmtDate(r.scrapTime) }
+        ], data.records);
+        MES.renderPager('scrapPager', data, p => { st.scrap.current = p; loadScrap(); });
+      } catch (e) { MES.toast(e.message, 'error'); }
+    }
+    async function createScrap() {
+      const body = {
+        orderNo: document.getElementById('sc_orderNo').value.trim(),
+        productCode: document.getElementById('sc_productCode').value.trim(),
+        qty: Number(document.getElementById('sc_qty').value || 0),
+        defectCode: document.getElementById('sc_defect').value.trim(),
+        reason: document.getElementById('sc_reason').value.trim(),
+        operator: document.getElementById('sc_operator').value.trim()
+      };
+      if (!body.orderNo) { MES.toast('工单号必填', 'error'); return; }
+      if (!(body.qty > 0)) { MES.toast('报废数量必须大于0', 'error'); return; }
+      try {
+        await MES.post('/quality/scrap', body); MES.toast('提交成功', 'ok');
+        document.getElementById('sc_qty').value = '0';
+        st.scrap.current = 1; loadScrap();
+      } catch (e) { MES.toast(e.message, 'error'); }
+    }
+
+    // ---- 返工 ----
+    async function loadRework() {
+      try {
+        const data = await MES.get('/quality/rework/page', { current: st.rework.current, size: st.rework.size, orderNo: document.getElementById('rw_qOrderNo').value.trim() });
+        MES.renderTable('reworkList', [
+          { label: '工单号', key: 'orderNo' },
+          { label: '产品编码', key: 'productCode' },
+          { label: '返工数量', key: 'qty' },
+          { label: '原因', key: 'reason' },
+          { label: '状态', render: r => statusEditor(r) },
+          { label: '操作人', key: 'operator' },
+          { label: '日期', render: r => MES.fmtDate(r.reworkDate) }
+        ], data.records);
+        MES.renderPager('reworkPager', data, p => { st.rework.current = p; loadRework(); });
+      } catch (e) { MES.toast(e.message, 'error'); }
+    }
+    function statusEditor(r) {
+      const opts = ['PENDING', 'DOING', 'DONE'].map(s =>
+        '<option value="' + s + '" ' + (s === r.status ? 'selected' : '') + '>' + ({ PENDING: '待返工', DOING: '返工中', DONE: '已完成' }[s]) + '</option>').join('');
+      return '<select class="status-sel" data-id="' + MES.esc(r.id) + '" style="padding:3px 6px;border:1px solid #d3dae2;border-radius:5px">' + opts + '</select>';
+    }
+    document.getElementById('reworkList').addEventListener('change', async e => {
+      const sel = e.target.closest('select.status-sel'); if (!sel) return;
+      try { await MES.post('/quality/rework/' + sel.dataset.id + '/status', null, { status: sel.value }); MES.toast('状态已更新', 'ok'); loadRework(); }
+      catch (err) { MES.toast(err.message, 'error'); }
+    });
+    async function createRework() {
+      const body = {
+        orderNo: document.getElementById('rw_orderNo').value.trim(),
+        productCode: document.getElementById('rw_productCode').value.trim(),
+        qty: Number(document.getElementById('rw_qty').value || 0),
+        reason: document.getElementById('rw_reason').value.trim(),
+        operator: document.getElementById('rw_operator').value.trim()
+      };
+      if (!body.orderNo) { MES.toast('工单号必填', 'error'); return; }
+      if (!(body.qty > 0)) { MES.toast('返工数量必须大于0', 'error'); return; }
+      try {
+        await MES.post('/quality/rework', body); MES.toast('提交成功', 'ok');
+        document.getElementById('rw_qty').value = '0';
+        st.rework.current = 1; loadRework();
+      } catch (e) { MES.toast(e.message, 'error'); }
+    }
+
+    // ---- 报表 ----
+    async function loadReport() {
+      try {
+        const rows = await MES.get('/quality/report', { orderNo: document.getElementById('rp_orderNo').value.trim() });
+        MES.renderTable('reportList', [
+          { label: '工单号', key: 'orderNo' },
+          { label: '产品', key: 'productName' },
+          { label: '计划', key: 'planQty' },
+          { label: '合格', key: 'qualifiedQty' },
+          { label: '报废', key: 'scrapQty' },
+          { label: '返工', key: 'reworkQty' },
+          { label: '良率', render: r => (r.passRate == null ? '-' : r.passRate + '%') },
+          { label: '报废率', render: r => (r.scrapRate == null ? '-' : r.scrapRate + '%') }
+        ], rows);
+      } catch (e) { MES.toast(e.message, 'error'); }
+    }
+
+    // ---- Tabs ----
+    MES.initTabs('tabs');
+    const tabBtns = document.querySelectorAll('#tabs button');
+    tabBtns[1]._onShow = loadRework;
+    tabBtns[2]._onShow = loadReport;
+    loadScrap();
+  </script>
+</body>
+</html>

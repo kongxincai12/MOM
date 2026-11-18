@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>物料库存 - 简易 MES</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="nav"></div>
+  <div class="container">
+    <div class="card">
+      <div class="tabs" id="tabs">
+        <button data-tab="tab-material" class="active">物料主数据</button>
+        <button data-tab="tab-stock">库存查询</button>
+        <button data-tab="tab-op">出入库操作</button>
+        <button data-tab="tab-record">出入库流水</button>
+      </div>
+
+      <!-- 物料主数据 -->
+      <div class="tab-panel active" id="tab-material">
+        <div class="form-grid">
+          <div class="field"><label>物料编码 *</label><input id="m_code"></div>
+          <div class="field"><label>物料名称</label><input id="m_name"></div>
+          <div class="field"><label>规格</label><input id="m_spec"></div>
+          <div class="field"><label>单位</label><input id="m_unit" placeholder="PCS/KG"></div>
+          <div class="field"><label>类别</label>
+            <select id="m_category"><option value="RAW">原材料</option><option value="SEMI">半成品</option><option value="FINISH">成品</option></select>
+          </div>
+          <div class="field"><button class="btn-primary" onclick="createMaterial()">新增物料</button></div>
+        </div>
+        <div class="toolbar" style="margin-top:14px">
+          <div class="field"><label>关键字</label><input id="m_kw" placeholder="编码/名称"></div>
+          <button class="btn-primary" onclick="loadMaterial()">查询</button>
+        </div>
+        <div id="matList" style="margin-top:12px"></div>
+        <div id="matPager"></div>
+      </div>
+
+      <!-- 库存查询 -->
+      <div class="tab-panel" id="tab-stock">
+        <div class="toolbar">
+          <div class="field"><label>物料编码</label><input id="s_code"></div>
+          <div class="field"><label>仓库</label><input id="s_wh" placeholder="WH01"></div>
+          <button class="btn-primary" onclick="loadStock()">查询</button>
+        </div>
+        <div id="stockList" style="margin-top:12px"></div>
+        <div id="stockPager"></div>
+      </div>
+
+      <!-- 出入库操作 -->
+      <div class="tab-panel" id="tab-op">
+        <div class="form-grid">
+          <div class="field"><label>业务类型 *</label>
+            <select id="o_biz">
+              <option value="IN">入库 IN</option>
+              <option value="OUT">出库 OUT</option>
+              <option value="ISSUE">领料 ISSUE</option>
+              <option value="RETURN">退料 RETURN</option>
+            </select>
+          </div>
+          <div class="field"><label>物料编码 *</label><input id="o_code"></div>
+          <div class="field"><label>仓库</label><input id="o_wh" placeholder="WH01"></div>
+          <div class="field"><label>数量 *</label><input id="o_qty" type="number" value="0"></div>
+          <div class="field"><label>关联工单</label><input id="o_orderNo"></div>
+          <div class="field"><label>操作人</label><input id="o_op"></div>
+          <div class="field"><button class="btn-primary" onclick="stockOperate()">提交</button></div>
+        </div>
+        <p style="color:#889;font-size:12px">说明：入库/退料增加库存，出库/领料扣减库存（不足会报错）。</p>
+      </div>
+
+      <!-- 出入库流水 -->
+      <div class="tab-panel" id="tab-record">
+        <div class="toolbar">
+          <div class="field"><label>物料编码</label><input id="r_code"></div>
+          <button class="btn-primary" onclick="loadRecord()">查询</button>
+        </div>
+        <div id="recList" style="margin-top:12px"></div>
+        <div id="recPager"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/common.js"></script>
+  <script>
+    if (!MES.requireLogin()) throw new Error('skip');
+    MES.renderNav('material.html');
+    const st = { mat: { current: 1, size: 10 }, stock: { current: 1, size: 10 }, rec: { current: 1, size: 10 } };
+
+    // ---- 物料主数据 ----
+    async function loadMaterial() {
+      try {
+        const data = await MES.get('/material/page', { current: st.mat.current, size: st.mat.size, keyword: document.getElementById('m_kw').value.trim() });
+        MES.renderTable('matList', [
+          { label: '编码', key: 'materialCode' },
+          { label: '名称', key: 'materialName' },
+          { label: '规格', key: 'spec' },
+          { label: '单位', key: 'unit' },
+          { label: '类别', render: r => ({ RAW: '原材料', SEMI: '半成品', FINISH: '成品' }[r.category] || r.category) },
+          { label: '操作', render: r => '<button class="btn-mini btn-danger" data-id="' + MES.esc(r.id) + '">删除</button>' }
+        ], data.records);
+        MES.renderPager('matPager', data, p => { st.mat.current = p; loadMaterial(); });
+      } catch (e) { MES.toast(e.message, 'error'); }
+    }
+    document.getElementById('matList').addEventListener('click', async e => {
+      const b = e.target.closest('button[data-id]'); if (!b) return;
+      if (!confirm('确认删除该物料？')) return;
+      try { await MES.del('/material/' + b.dataset.id); MES.toast('已删除', 'ok'); loadMaterial(); }
+      catch (err) { MES.toast(err.message, 'error'); }
+    });
+    async function createMaterial() {
+      const body = {
+        materialCode: document.getElementById('m_code').value.trim(),
+        materialName: document.getElementById('m_name').value.trim(),
+        spec: document.getElementById('m_spec').value.trim(),
+        unit: document.getElementById('m_unit').value.trim(),
+        category: document.getElementById('m_category').value
+      };
+      if (!body.materialCode) { MES.toast('物料编码必填', 'error'); return; }
+      try {
+        await MES.post('/material', body); MES.toast('新增成功', 'ok');
+        ['m_code', 'm_name', 'm_spec', 'm_unit'].forEach(i => document.getElementById(i).value = '');
+        st.mat.current = 1; loadMaterial();
+      } catch (e) { MES.toast(e.message, 'error'); }
+    }
+
+    // ---- 库存 ----
+    async function loadStock() {
+      try {
+        const data = await MES.get('/material/stock/page', { current: st.stock.current, size: st.stock.size, materialCode: document.getElementById('s_code').value.trim(), warehouse: document.getElementById('s_wh').value.trim() });
+        MES.renderTable('stockList', [
+          { label: '物料编码', key: 'materialCode' },
+          { label: '仓库', key: 'warehouse' },
+          { label: '库存数量', key: 'qty' },
+          { label: '单位', key: 'unit' },
+          { label: '更新时间', render: r => MES.fmtDate(r.updateTime) }
+        ], data.records);
+        MES.renderPager('stockPager', data, p => { st.stock.current = p; loadStock(); });
+      } catch (e) { MES.toast(e.message, 'error'); }
+    }
+
+    // ---- 出入库操作 ----
+    async function stockOperate() {
+      const body = {
+        bizType: document.getElementById('o_biz').value,
+        materialCode: document.getElementById('o_code').value.trim(),
+        warehouse: document.getElementById('o_wh').value.trim(),
+        qty: Number(document.getElementById('o_qty').value || 0),
+        orderNo: document.getElementById('o_orderNo').value.trim(),
+        operator: document.getElementById('o_op').value.trim()
+      };
+      if (!body.materialCode) { MES.toast('物料编码必填', 'error'); return; }
+      if (!(body.qty > 0)) { MES.toast('数量必须大于0', 'error'); return; }
+      try {
+        await MES.post('/material/stock/operate', body); MES.toast('操作成功', 'ok');
+        document.getElementById('o_qty').value = '0';
+      } catch (e) { MES.toast(e.message, 'error'); }
+    }
+
+    // ---- 流水 ----
+    async function loadRecord() {
+      try {
+        const data = await MES.get('/material/stock/record/page', { current: st.rec.current, size: st.rec.size, materialCode: document.getElementById('r_code').value.trim() });
+        MES.renderTable('recList', [
+          { label: '物料编码', key: 'materialCode' },
+          { label: '仓库', key: 'warehouse' },
+          { label: '类型', key: 'bizType' },
+          { label: '数量', key: 'qty' },
+          { label: '关联工单', key: 'orderNo' },
+          { label: '操作人', key: 'operator' },
+          { label: '时间', render: r => MES.fmtDate(r.createTime) }
+        ], data.records);
+        MES.renderPager('recPager', data, p => { st.rec.current = p; loadRecord(); });
+      } catch (e) { MES.toast(e.message, 'error'); }
+    }
+
+    // ---- Tabs ----
+    MES.initTabs('tabs');
+    const tabBtns = document.querySelectorAll('#tabs button');
+    tabBtns[1]._onShow = loadStock;
+    tabBtns[3]._onShow = loadRecord;
+    // 初始触发一次（首屏默认物料）
+    loadMaterial();
+  </script>
+</body>
+</html>
